@@ -1,0 +1,73 @@
+module seg_display(
+    input clk,          // 100Hz显示时钟
+    input rst_n,
+    input [15:0] input_pwd, // 4位输入密码（16位）
+    output reg [6:0] seg,   // 段选（共阴）
+    output reg [3:0] dig    // 位选
+);
+
+parameter [6:0] SEG_0 = 7'b1111110;
+parameter [6:0] SEG_1 = 7'b0110000;
+parameter [6:0] SEG_2 = 7'b1101101;
+parameter [6:0] SEG_3 = 7'b1111001;
+parameter [6:0] SEG_4 = 7'b0110011;
+parameter [6:0] SEG_5 = 7'b1011011;
+parameter [6:0] SEG_6 = 7'b1011111;
+parameter [6:0] SEG_7 = 7'b1110000;
+parameter [6:0] SEG_8 = 7'b1111111;
+parameter [6:0] SEG_9 = 7'b1111011;
+
+// 位选计数器（0-3，对应4位数码管）
+reg [1:0] dig_cnt=2'b0;
+// 当前显示的数字
+reg [3:0] num;
+
+// 位选计数逻辑
+always @(posedge clk or negedge rst_n) begin
+    if(!rst_n) begin
+        dig_cnt <= 2'd0;
+    end else begin
+        dig_cnt <= dig_cnt + 1'b1;
+    end
+end
+
+// 提取当前位的数字（input_pwd：高4位→第0位数码管，低4位→第3位数码管）
+always @(*) begin
+    case(dig_cnt)
+        2'd0: num = input_pwd[15:12]; // 第1位数码管（最左）
+        2'd1: num = input_pwd[11:8];  // 第2位数码管
+        2'd2: num = input_pwd[7:4];   // 第3位数码管
+        2'd3: num = input_pwd[3:0];   // 第4位数码管（最右）
+        default: num = 4'b0000;
+    endcase
+end
+
+// 段选赋值
+always @(*) begin
+    case(num)
+        4'd0: seg = SEG_0;
+        4'd1: seg = SEG_1;
+        4'd2: seg = SEG_2;
+        4'd3: seg = SEG_3;
+        4'd4: seg = SEG_4;
+        4'd5: seg = SEG_5;
+        4'd6: seg = SEG_6;
+        4'd7: seg = SEG_7;
+        4'd8: seg = SEG_8;
+        4'd9: seg = SEG_9;
+        default: seg = 7'b0000000;
+    endcase
+end
+
+// 位选赋值（每次只亮一位）
+always @(*) begin
+    case(dig_cnt)
+        2'd0: dig = 4'b1110; // 第1位（最左）
+        2'd1: dig = 4'b1101; // 第2位
+        2'd2: dig = 4'b1011; // 第3位
+        2'd3: dig = 4'b0111; // 第4位（最右）
+        default: dig = 4'b0000;
+    endcase
+end
+
+endmodule

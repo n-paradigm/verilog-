@@ -1,0 +1,42 @@
+module top(
+    input clk,
+    input rst_n,
+    input key_in,
+    input [3:0] key_value,
+    output beep
+);
+    wire key_pressed;
+    wire [3:0] pass_buf [0:3];
+    wire match;
+    wire [3:0] preset_password [0:3];
+
+    key_detect u_key_detect(
+        .clk(clk),
+        .rst_n(rst_n),
+        .key_in(key_in),
+        .key_pressed(key_pressed)
+    );
+
+    password_buffer u_password_buffer(
+        .clk(clk),
+        .rst_n(rst_n),
+        .key_pressed(key_pressed),
+        .key_value(key_value),
+        .pass_buf(pass_buf)
+    );
+
+    password_storage u_password_storage(
+        .preset_password(preset_password)
+    );
+
+    password_scan u_password_scan(
+        .pass_buf(pass_buf),
+        .preset_password(preset_password),
+        .match(match)
+    );
+
+    beep_driver u_beep_driver(
+        .match(match),
+        .beep(beep)
+    );
+endmodule

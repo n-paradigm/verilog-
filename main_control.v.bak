@@ -1,0 +1,199 @@
+module main_control(
+    input clk,
+    input rst_n,
+    input [3:0] key_value,
+    input key_valid,
+    input pwd_match,
+    input key_lock,          // 钥匙锁按键
+    input setting_done,      // 密码设置完成（来自密码设置模块）
+    input admin_error,
+    output reg[2:0] flag,	 // 错误次数计数器
+    output reg led1,         // 密码正确灯
+    output reg led2,         // 密码错误灯
+    output reg led3,         // 密码设置状态灯
+    output reg buzzer,       // 蜂鸣器
+    output reg safe_open,    // 保险箱开启
+    output reg setting_en,   // 密码设置使能（输出到密码设置模块）
+    output reg error_flag,    // 错误标志
+	 output reg show_erro   //给七段数码管一个错误的信号
+);
+
+// 状态定义
+reg [3:0] state; // 状态位扩展为4位，新增设置相关状态
+parameter IDLE = 4'b0000;    // 空闲状态
+parameter INPUT = 4'b0001;   // 密码输入状态
+parameter CORRECT = 4'b0010; // 密码正确状态
+parameter ERROR = 4'b0011;   // 密码错误状态
+parameter SETTING = 4'b0100; // 密码设置状态
+parameter SET_SUCCESS = 4'b0101; // 密码设置成功
+parameter SET_ERROR = 4'b0110; // 密码设置失败
+parameter SET_freeze = 4'b0111; // 密码冻结 
+
+// 状态机逻辑
+always @(posedge clk or negedge rst_n) begin
+    if(!rst_n) begin
+        state <= IDLE;
+        led1 <= 1'b1; // 修改：初始灭（低电平亮→初始高电平）
+        led2 <= 1'b1; // 修改：初始灭
+        led3 <= 1'b1; // 修改：初始灭（新增：设置灯初始灭）
+        buzzer <= 1'b0; // 修改：初始不响（若蜂鸣器也是低电平响，同此逻辑）
+        safe_open <= 1'b0;
+        setting_en <= 1'b0;
+        error_flag <= 1'b0;
+		  show_erro <= 1'b0;
+    end else begin
+        case(state)
+            IDLE: begin
+                // 初始状态，按下任意数字键进入输入状态
+					 flag <= 3'b000;
+                if(key_valid && (key_value >= 4'b0000 && key_value <= 4'b1001)) begin
+                    state <= INPUT;
+                    error_flag <= 1'b0;
+                end else if(key_valid && key_value == 4'b1110) begin // D键：设置密码
+                    state <= SETTING;
+                    setting_en <= 1'b1;
+                    led3 <= 1'b0; // 修改：设置灯亮（低电平）
+                end else begin
+                    state <= IDLE;
+                end
+                led1 <= 1'b1; // 修改：灭
+                led2 <= 1'b1; // 修改：灭
+                buzzer <= 1'b0; // 修改：不响
+                safe_open <= 1'b0;
+					 show_erro<=1'b0;
+            end
+            INPUT: begin
+                // 输入密码状态，按下确认键判断密码
+                if(key_valid && key_value == 4'b1010) begin // A键：确认
+						show_erro=1'b0;
+                    if(pwd_match) begin
+                        state <= CORRECT; // 密码正确
+                        led1 <= 1'b0; // 修改：密码正确灯亮（低电平）
+                        led2 <= 1'b1; // 修改：灭
+                        buzzer <= 1'b0; // 修改：不响
+                    end else begin
+                        state <= ERROR; // 密码错误
+                        led1 <= 1'b1; // 修改：灭
+                        led2 <= 1'b0; // 修改：密码错误灯亮（低电平）
+                        buzzer <= 1'b1; // 修改：蜂鸣器响（低电平）
+                        error_flag <= 1'b1;
+                    end
+                end else if(key_valid && key_value == 4'b1101) begin // C键：清除，回到空闲
+                    state <= IDLE;
+                end else begin
+                    state <= INPUT;
+                end
+                safe_open <= 1'b0;
+                setting_en <= 1'b0;
+                led3 <= 1'b1; // 修改：灭
+            end
+            CORRECT: begin
+                // 密码正确状态，插入钥匙（按下key_lock）开启保险箱
+                if(key_lock) begin
+                    safe_open <= 1'b1;
+                end else begin
+                    safe_open <= 1'b0;
+                end
+                // 按下清除键回到空闲状态
+                if(key_valid && key_value == 4'b1101) begin
+                    state <= IDLE;
+                    led1 <= 1'b1; // 修改：灭
+						  show_erro<=1'b0;
+                end else begin
+                    state <= CORRECT;
+                end
+                led2 <= 1'b1; // 修改：灭
+                buzzer <= 1'b0; // 修改：不响
+                setting_en <= 1'b0;
+                led3 <= 1'b1; // 修改：灭
+            end
+            ERROR: begin
+                // 密码错误状态，按下清除/退格键回到空闲/输入状态
+                if(key_valid && (key_value == 4'b1101 || key_value == 4'b1011)) begin
+                    state <= IDLE;
+                    led2 <= 1'b1; // 修改：灭
+                    buzzer <= 1'b0; // 修改：不响
+						  show_erro <= 1'b1;
+                end else begin
+                    state <= ERROR;
+					 flag<=flag+1;
+					 if(flag<=3'b011)
+					   state<=SET_freeze;
+                end
+                led1 <= 1'b1; // 修改：灭
+                safe_open <= 1'b0;
+                setting_en <= 1'b0;
+                led3 <= 1'b1; // 修改：灭
+            end
+            SETTING: begin
+                // 密码设置状态，根据密码设置模块的信号跳转
+                setting_en <= 1'b1;
+                led3 <= 1'b0; // 修改：设置灯亮（低电平）
+					 show_erro<=1'b0;
+                if(admin_error) begin
+                    // 管理员密码错误，进入设置失败状态
+                    state <= SET_ERROR;
+                    setting_en <= 1'b0;
+                end else if(setting_done) begin
+                    // 密码设置完成，进入设置成功状态
+                    state <= SET_SUCCESS;
+                    setting_en <= 1'b0;
+                end else if(key_valid && key_value == 4'b1101) begin // C键：取消设置
+                    state <= IDLE;
+                    setting_en <= 1'b0;
+                    led3 <= 1'b1; // 修改：灭
+                end else begin
+                    state <= SETTING;
+                end
+                led1 <= 1'b1; // 修改：灭
+                led2 <= 1'b1; // 修改：灭
+                buzzer <= 1'b0; // 修改：不响
+                safe_open <= 1'b0;
+            end
+            SET_SUCCESS: begin
+                // 密码设置成功状态，按下清除键回到空闲
+                led3 <= 1'b0; // 修改：设置灯亮（低电平）
+					 show_erro<=1'b0;
+                if(key_valid && key_value == 4'b1101) begin
+                    state <= IDLE;
+                    led3 <= 1'b1; // 修改：灭
+                end else begin
+                    state <= SET_SUCCESS;
+                end
+                led1 <= 1'b1; // 修改：灭
+                led2 <= 1'b1; // 修改：灭
+                buzzer <= 1'b0; // 修改：不响
+                safe_open <= 1'b0;
+                setting_en <= 1'b0;
+            end
+            SET_ERROR: begin
+                // 密码设置失败状态，按下清除键回到空闲
+                led2 <= 1'b0; // 修改：错误灯亮（低电平）
+                buzzer <= 1'b1; // 修改：蜂鸣器响
+					 show_erro=1'b0;
+                if(key_valid && key_value == 4'b1101) begin
+                    state <= IDLE;
+                    led2 <= 1'b1; // 修改：灭
+                    buzzer <= 1'b0; // 修改：不响
+                end else begin
+                    state <= SET_ERROR;
+                end
+                led1 <= 1'b1; // 修改：灭
+                led3 <= 1'b1; // 修改：灭
+                safe_open <= 1'b0;
+                setting_en <= 1'b0;
+            end
+				SET_freeze:begin
+					led2 <= 1'b0;
+					show_erro=1'b0;
+					state <= SET_freeze;
+				end
+					
+					
+					
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule

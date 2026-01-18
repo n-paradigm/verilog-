@@ -1,0 +1,20 @@
+
+State Machine - |Block1|admin_detector:inst7|setting_state
+Name setting_state.INPUT_NEW 
+setting_state.IDLE 0 
+setting_state.INPUT_NEW 1 
+
+State Machine - |Block1|key_matrix_4x4:inst|current_state
+Name current_state.S_CONFIRM current_state.S_IDLE current_state.S_WAIT_RELEASE 
+current_state.S_IDLE 0 0 0 
+current_state.S_CONFIRM 1 1 0 
+current_state.S_WAIT_RELEASE 0 1 1 
+
+State Machine - |Block1|main_control:inst9|state
+Name state.SET_freeze state.SETTING state.ERROR state.CORRECT state.INPUT state.IDLE 
+state.IDLE 0 0 0 0 0 0 
+state.INPUT 0 0 0 0 1 1 
+state.CORRECT 0 0 0 1 0 1 
+state.ERROR 0 0 1 0 0 1 
+state.SETTING 0 1 0 0 0 1 
+state.SET_freeze 1 0 0 0 0 1 

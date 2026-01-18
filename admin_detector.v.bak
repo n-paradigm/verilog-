@@ -1,0 +1,70 @@
+// admin_detector.v
+// 检测固定管理员密码 6420 + A键（确认），输出设置请求信号
+
+module admin_detector (
+    input wire clk,
+    input wire rst_n,
+    input wire [3:0] key_value,
+    input wire key_valid,
+
+    output reg admin_set_req  // 高电平：请求进入密码设置模式
+);
+
+// 管理员密码：6 4 2 0
+localparam [15:0] ADMIN_PWD = {4'd6, 4'd4, 4'd2, 4'd0};
+
+// 缓存最近4次有效数字输入
+reg [3:0] digit_buf [0:3];  // digit_buf[0] = 第1位
+reg [1:0] count;            // 已输入位数（0~4）
+reg       req_pending;      // 防止重复触发
+
+// 状态：只记录数字输入，不关心系统状态
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        count <= 0;
+        admin_set_req <= 0;
+        req_pending <= 0;
+        digit_buf[0] <= 0;
+        digit_buf[1] <= 0;
+        digit_buf[2] <= 0;
+        digit_buf[3] <= 0;
+    end else begin
+        admin_set_req <= 0; // 默认不请求
+
+        if (key_valid) begin
+            if (key_value >= 4'd0 && key_value <= 4'd9) begin
+                // 是数字键，缓存
+                if (count < 4) begin
+                    digit_buf[count] <= key_value;
+                    count <= count + 1;
+                end
+                // 超过4位？可选择丢弃或覆盖，这里保持4位
+            end
+            else if (key_value == 4'd10) begin // A键：确认
+                if (count == 4) begin
+                    // 检查是否为 6420
+                    if ({digit_buf[0], digit_buf[1], digit_buf[2], digit_buf[3]} == ADMIN_PWD) begin
+                        if (!req_pending) begin
+                            admin_set_req <= 1'b1;
+                            req_pending <= 1'b1;
+                        end
+                    end
+                end
+                // 无论是否匹配，确认后清空输入
+                count <= 0;
+            end
+            else if (key_value == 4'd12 || key_value == 4'd13) begin // C=12(清除), B=11(退格) 可选
+                // 清除输入缓存
+                count <= 0;
+                req_pending <= 0;
+            end
+            // 其他按键（D=14, *等）忽略
+        end
+    end
+end
+
+// 可选：自动释放 req_pending（比如1秒后）
+// 这里简化：由顶层在响应后通过复位信号或额外逻辑清除
+// 如果你希望单次触发，可在顶层用脉冲检测
+
+endmodule
